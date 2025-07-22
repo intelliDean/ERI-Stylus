@@ -177,7 +177,7 @@ let num = counter.number().call().await;
 println!("New counter number value = {:?}", num);
 ```
 
-Before running, set the following env vars or place them in a `.env` file (see: [.env.example](./.env.example)) in this project:
+Before running, set the following env vars or place them in a `.env` file (see: [.env.example](Ownership/.env.example)) in this project:
 
 ```
 RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
