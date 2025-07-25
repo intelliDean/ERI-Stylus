@@ -1,18 +1,57 @@
 #![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
 
-mod utility;
-
 #[macro_use]
 extern crate alloc;
+mod utility;
 
 use crate::utility::EriError::*;
-use crate::utility::*; //{AuthenticitySet, ContractCreated, EriError, ADDRESS_ZERO, ONLY_OWNER};
-use alloc::string::String;
+use crate::utility::*;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use alloy_primitives::Address;
-/// Import items from the SDK. The prelude contains common traits and macros.
+use alloy_primitives::{Address, FixedBytes};
 use stylus_sdk::{alloy_primitives::U256, prelude::*};
+
+// sol_storage! {
+//     #[entrypoint]
+//     pub struct Ownership {
+//
+//         address authenticity;
+//
+//         address owner;
+//
+//         mapping(string => UserProfile) users;
+//
+//         mapping(address => string) usernames;
+//
+//         mapping(string => address) owners;
+//
+//         mapping(address => mapping(string => Item)) owned_items;
+//
+//         mapping(address => Item[]) my_items;
+//
+//         mapping(bytes32 => address) temp;
+//
+//         mapping(bytes32 => mapping(address => Item)) temp_owners;
+//     }
+//
+//     struct UserProfile {
+//         address user_address;
+//         string username;
+//         bool registered;
+//         uint256 registered_at;
+//     }
+//
+//     struct Item {
+//         string name;
+//         string item_id;
+//         string serial;
+//         uint256 date;
+//         address owner;
+//         string manufacturer;
+//         string[] metadata;
+//     }
+// }
 
 sol_storage! {
     #[entrypoint]
@@ -53,15 +92,44 @@ sol_storage! {
         string manufacturer;
         string[] metadata;
     }
+
+    //   struct Certificate {
+    //     string name;
+    //     string unique_id;
+    //     string serial;
+    //     uint256 date;
+    //     address owner;
+    //     bytes32 metadata_hash;
+    //     string[] metadata;
+    // }
 }
 
 impl Ownership {
     fn address_zero_check(&self, caller: Address) -> Result<(), EriError> {
-        // let caller = self.vm().msg_sender();
-
         if caller.is_zero() {
             return Err(AddressZero(ADDRESS_ZERO { zero: caller }));
         }
+        Ok(())
+    }
+
+    fn is_authenticity_set(&self) -> Result<(), EriError> {
+        if self.authenticity.get().is_zero() {
+            return Err(AuthenticityNotSet(AUTHENTICITY_NOT_SET {}));
+        }
+
+        Ok(())
+    }
+
+    fn is_registered(&self, address: Address) -> Result<(), EriError> {
+        if !self
+            .users
+            .get(self.usernames.get(address).get_string())
+            .registered
+            .get()
+        {
+            return Err(NotRegistered(NOT_REGISTERED { user: address }));
+        }
+
         Ok(())
     }
 }
@@ -81,12 +149,12 @@ impl Ownership {
 
         Ok(())
     }
-
     fn set_authenticity(&mut self, authenticity_address: Address) -> Result<(), EriError> {
+        self.is_authenticity_set()?;
         self.address_zero_check(authenticity_address)?;
         let caller = self.vm().msg_sender();
+        //ONLY OWNER
         if caller != self.owner.get() {
-            //ONLY OWNER
             return Err(OnlyOwner(ONLY_OWNER { owner: caller }));
         }
 
@@ -98,40 +166,10 @@ impl Ownership {
 
         Ok(())
     }
-
-    //
-    //     function userRegisters(
-    //     string calldata username
-    //     ) external addressZeroCheck(msg.sender) isAuthenticitySet {
-    //     address userAddress = msg.sender;
-    //     users._userRegisters(usernames, userAddress, username);
-    //     emit UserRegistered(userAddress, username);
-    // }
-
-    // if (bytes(username).length < 3) {
-    // revert EriErrors.USERNAME_MUST_BE_AT_LEAST_3_LETTERS();
-    // }
-    // //reverts if username is already used by someone else
-    // if (isRegistered(users, username)) {
-    // //no duplicate username and address
-    // revert EriErrors.NAME_NOT_AVAILABLE(username);
-    // }
-    // //reverts if wallet address has already registered
-    // if (isNotEmpty(usernames[userAddress])) {
-    // revert EriErrors.ALREADY_REGISTERED(userAddress);
-    // }
-    //
-    // IEri.UserProfile storage _user = users[username];
-    // _user.userAddress = userAddress;
-    // _user.username = username;
-    // _user.isRegistered = true;
-    // _user.registeredAt = block.timestamp;
-    //
-    // //save a username with a user address, mostly for when using connect wallet
-    // usernames[userAddress] = username;
-
     fn user_registers(&mut self, username: String) -> Result<(), EriError> {
         let caller = self.vm().msg_sender();
+
+        self.is_authenticity_set()?;
         self.address_zero_check(caller)?;
 
         let time = self.vm().block_timestamp();
@@ -167,36 +205,94 @@ impl Ownership {
 
         Ok(())
     }
-}
+    fn get_user(&self, user_address: Address) -> Result<(Address, String, bool, U256), EriError> {
+        self.is_authenticity_set()?;
+        let username = self.usernames.get(user_address);
+        let user = self.users.get(username.get_string());
 
-#[cfg(test)]
-mod test {
-    use super::*;
+        if user.user_address.get().is_zero() {
+            return Err(NotExist(USER_DOES_NOT_EXIST { user: user_address }));
+        }
 
-    #[test]
-    fn test_counter() {
-        // use stylus_sdk::testing::*;
-        // let vm = TestVM::default();
-        // let mut contract = Counter::from(&vm);
-        //
-        // assert_eq!(U256::ZERO, contract.number());
-        //
-        // contract.increment();
-        // assert_eq!(U256::from(1), contract.number());
-        //
-        // contract.add_number(U256::from(3));
-        // assert_eq!(U256::from(4), contract.number());
-        //
-        // contract.mul_number(U256::from(2));
-        // assert_eq!(U256::from(8), contract.number());
-        //
-        // contract.set_number(U256::from(100));
-        // assert_eq!(U256::from(100), contract.number());
-        //
-        // // Override the msg value for future contract method invocations.
-        // vm.set_value(U256::from(2));
-        //
-        // contract.add_from_msg_value();
-        // assert_eq!(U256::from(102), contract.number());
+        Ok((
+            user.user_address.get(),
+            user.username.get_string(),
+            user.registered.get(),
+            user.registered_at.get(),
+        ))
+    }
+
+    fn create_item(
+        &mut self,
+        user: Address,
+        name: String,
+        unique_id: String,
+        serial: String,
+        date: U256,
+        owner: Address,
+        // metadata_hash: FixedBytes<32>,
+        metadata: Vec<String>,
+        manufacturer_name: String,
+    ) -> Result<(), EriError> {
+        let caller = self.vm().msg_sender();
+
+        self.is_authenticity_set()?;
+        self.address_zero_check(caller)?;
+        self.address_zero_check(user)?;
+        self.is_registered(user)?;
+
+        if caller != self.authenticity.get() {
+            //making sure only Authenticity can call this function
+            return Err(Unauthorized(UNAUTHORIZED { caller }));
+        }
+        if owner.is_zero() {
+            return Err(AddressZero(ADDRESS_ZERO { zero: owner }));
+        }
+
+        if !self.owners.get(unique_id.clone()).is_zero() {
+            return Err(AlreadyClaimed(ITEM_CLAIMED_ALREADY {
+                itemId: unique_id.clone(),
+            }));
+        }
+
+        //======== GENERAL ITEMS ==========
+        let mut user_item = self.owned_items.setter(user);
+        let mut item = user_item.setter(unique_id.clone());
+
+        item.item_id.set_str(unique_id.clone());
+        item.owner.set(user);
+        item.name.set_str(name.clone());
+        item.date.set(date);
+        item.manufacturer.set_str(manufacturer_name.clone());
+        item.serial.set_str(serial.clone());
+
+        //======== PERSONAL ITEM =============
+        let mut my_items_vec = self.my_items.setter(user);
+        let mut new_item = my_items_vec.grow();
+
+        new_item.item_id.set_str(unique_id.clone());
+        new_item.owner.set(user);
+        new_item.name.set_str(name);
+        new_item.date.set(date);
+        new_item.manufacturer.set_str(manufacturer_name);
+        new_item.serial.set_str(serial);
+
+        for meta in metadata {
+            let mut guard = item.metadata.grow();
+            guard.set_str(meta.clone());
+
+            // Adds a new StorageString slot and returns a guard
+            let mut guard = new_item.metadata.grow();
+            guard.set_str(meta);
+        }
+
+        self.owners.setter(unique_id.clone()).set(user);
+
+        stylus_sdk::evm::log(ItemCreated {
+            itemId: unique_id.parse().unwrap(),
+            owner: user,
+        });
+
+        Ok(())
     }
 }
