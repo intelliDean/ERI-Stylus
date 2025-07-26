@@ -7,16 +7,6 @@ use stylus_sdk::prelude::*;
 
 sol! {
 
-      struct Certificate {
-        string name;
-        string unique_id;
-        string serial;
-        uint256 date;
-        address owner;
-        bytes32 metadata_hash;
-        string[] metadata;
-    }
-
 
     error ONLY_OWNER(address owner);
     error ALREADY_REGISTERED(address caller);
@@ -33,7 +23,7 @@ sol! {
     error NOT_REGISTERED(address user);
     error NAME_NOT_AVAILABLE(string username);
     error USER_DOES_NOT_EXIST(address user);
-    error CANNOT_GENERATE_CODE_FOR_YOURSELF(address);
+    error CANNOT_GENERATE_CODE_FOR_YOURSELF(address caller);
     error USERNAME_MUST_BE_AT_LEAST_3_LETTERS();
     error INVALID_MANUFACTURER_NAME(string);
     error AUTHENTICITY_NOT_SET();
@@ -47,16 +37,27 @@ sol! {
     event AuthenticitySet(address indexed authenticityAddress);
 }
 
-// #[derive(Debug)]
-// pub struct Certificate {
-//     pub name: String,
-//     pub unique_id: String,
-//     pub serial: String,
-//     pub date: U256,
-//     pub owner: Address,
-//     pub metadata_hash: Bytes,
-//     pub metadata: Vec<String>,
-// }
+#[derive(Debug)]
+pub struct Certificate {
+    pub name: String,
+    pub unique_id: String,
+    pub serial: String,
+    pub date: U256,
+    pub owner: Address,
+    pub metadata_hash: Bytes,
+    pub metadata: Vec<String>,
+}
+
+#[derive(Debug)]
+pub struct Item {
+    pub name: String,
+    pub item_id: String,
+    pub serial: String,
+    pub date: U256,
+    pub owner: Address,
+    pub manufacturer: String,
+    pub metadata: Vec<String>,
+}
 
 #[derive(SolidityError)]
 pub enum EriError {
@@ -69,5 +70,8 @@ pub enum EriError {
     AuthenticityNotSet(AUTHENTICITY_NOT_SET),
     Unauthorized(UNAUTHORIZED),
     NotRegistered(NOT_REGISTERED),
-    AlreadyClaimed(ITEM_CLAIMED_ALREADY)
+    AlreadyClaimed(ITEM_CLAIMED_ALREADY),
+    CannotGenerate(CANNOT_GENERATE_CODE_FOR_YOURSELF),
+    NotClaimed(ITEM_NOT_CLAIMED_YET),
+    
 }

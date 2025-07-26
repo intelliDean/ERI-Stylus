@@ -7,51 +7,12 @@ mod utility;
 
 use crate::utility::EriError::*;
 use crate::utility::*;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec::Vec;
 use alloy_primitives::{Address, FixedBytes};
+use alloy_sol_types::SolValue;
+use stylus_sdk::crypto::keccak;
 use stylus_sdk::{alloy_primitives::U256, prelude::*};
-
-// sol_storage! {
-//     #[entrypoint]
-//     pub struct Ownership {
-//
-//         address authenticity;
-//
-//         address owner;
-//
-//         mapping(string => UserProfile) users;
-//
-//         mapping(address => string) usernames;
-//
-//         mapping(string => address) owners;
-//
-//         mapping(address => mapping(string => Item)) owned_items;
-//
-//         mapping(address => Item[]) my_items;
-//
-//         mapping(bytes32 => address) temp;
-//
-//         mapping(bytes32 => mapping(address => Item)) temp_owners;
-//     }
-//
-//     struct UserProfile {
-//         address user_address;
-//         string username;
-//         bool registered;
-//         uint256 registered_at;
-//     }
-//
-//     struct Item {
-//         string name;
-//         string item_id;
-//         string serial;
-//         uint256 date;
-//         address owner;
-//         string manufacturer;
-//         string[] metadata;
-//     }
-// }
 
 sol_storage! {
     #[entrypoint]
@@ -128,6 +89,15 @@ impl Ownership {
             .get()
         {
             return Err(NotRegistered(NOT_REGISTERED { user: address }));
+        }
+
+        Ok(())
+    }
+    fn is_item_owner(&self, item_id: String) -> Result<(), EriError> {
+        let caller = self.vm().msg_sender();
+
+        if caller != self.owners.get(item_id) {
+            return Err(OnlyOwner(ONLY_OWNER { owner: caller }));
         }
 
         Ok(())
@@ -297,37 +267,6 @@ impl Ownership {
         Ok(())
     }
 
-    // if (users[usernames[user]].userAddress == address(0)) {
-    // revert EriErrors.USER_DOES_NOT_EXIST(user);
-    // }
-    //
-    // IEri.Item[] memory itemList = myItems[user];
-    //
-    // // Count valid items
-    // uint256 validCount = 0;
-    // for (uint256 i = 0; i < itemList.length; i++) {
-    // if (ownedItems[user][itemList[i].itemId].owner != address(0)) {
-    // validCount++;
-    // }
-    // }
-    //
-    // if (validCount == 0) {
-    // return new IEri.Item[](0);
-    // }
-    //
-    // // Allocate and populate array
-    // IEri.Item[] memory newItemList = new IEri.Item[](validCount);
-    // for (uint256 i = 0; i < itemList.length; i++) {
-    // if (ownedItems[user][itemList[i].itemId].owner != address(0)) {
-    // newItemList[validCount - 1] = ownedItems[user][
-    // itemList[i].itemId
-    // ];
-    // validCount--;
-    // }
-    // }
-    //
-    // return newItemList;
-
     fn get_all_my_items(
         &self,
     ) -> Result<Vec<(String, String, String, U256, Address, String, Vec<String>)>, EriError> {
@@ -372,5 +311,89 @@ impl Ownership {
             }
         }
         Ok(new_list)
+    }
+
+    // if (tempOwner == caller) {
+    // revert EriErrors.CANNOT_GENERATE_CODE_FOR_YOURSELF(caller);
+    // }
+    // // make sure only the item owner can generate code for the item
+    //
+    // if (!isRegistered(users, usernames[caller])) {
+    // revert EriErrors.NOT_REGISTERED(caller);
+    // }
+    //
+    // IEri.Item memory _item = ownedItems[caller][itemId];
+    //
+    // //this is the code the owner will give to the new owner to claim ownership
+    // bytes32 itemHash = keccak256(abi.encode(_item)); //it will always be the same every time
+    //
+    // //you cannot generate code for an item for more than 1 person at a time
+    // if (temp[itemHash] != address(0)) {
+    // revert EriErrors.ITEM_NOT_CLAIMED_YET();
+    // }
+    //
+    // // if you have already generated the code, you don't need to generate anymore (no need anymore)
+    // //        if (tempOwners[itemHash][tempOwner].owner != address(0)) {
+    // //            revert EriErrors.CODE_ALREADY_GENERATED();
+    // //        }
+    //
+    // tempOwners[itemHash][tempOwner] = _item;
+    // temp[itemHash] = tempOwner;
+    //
+    // return itemHash;
+
+    fn generate_change_of_ownership_code(
+        &mut self,
+        item_id: String,
+        temp_owner: Address,
+    ) -> Result<(), EriError> {
+        let caller = self.vm().msg_sender();
+
+        self.address_zero_check(caller)?;
+        self.address_zero_check(temp_owner)?;
+        self.is_authenticity_set()?;
+        self.is_registered(caller)?;
+        self.is_item_owner(item_id.clone())?;
+
+        if caller == temp_owner {
+            return Err(CannotGenerate(CANNOT_GENERATE_CODE_FOR_YOURSELF { caller }));
+        }
+
+        let mut user_item = self.owned_items.setter(caller);
+        let item = user_item.setter(item_id);
+
+        let mut meta = Vec::new();
+
+        for i in 0..item.metadata.len() {
+            meta.push(item.metadata.get(i).unwrap().get_string())
+        }
+
+        let inner_item = (
+            item.name.get_string(),
+            item.item_id.get_string(),
+            item.serial.get_string(),
+            item.date.get(),
+            item.owner.get(),
+            item.manufacturer.get_string(),
+            meta,
+        );
+        type InnerItemTuple = (String, String, String, U256, Address, String, Vec<String>);
+        let encoded = InnerItemTuple::abi_encode_sequence(&inner_item);
+        let item_hash: FixedBytes<32> = keccak(encoded).into();
+
+        if !self.temp.get(item_hash).is_zero() {
+            return Err(NotClaimed(ITEM_NOT_CLAIMED_YET {}));
+        }
+
+        //TODO: I WILL DO THIS IN THE MORNING
+        // tempOwners[itemHash][tempOwner] = _item;
+        // temp[itemHash] = tempOwner;
+
+        stylus_sdk::evm::log(OwnershipCode {
+            ownershipCode: item_hash,
+            tempOwner: temp_owner,
+        });
+
+        Ok(())
     }
 }
