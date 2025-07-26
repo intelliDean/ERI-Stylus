@@ -286,6 +286,7 @@ impl Ownership {
             guard.set_str(meta);
         }
 
+        // item id to a user address
         self.owners.setter(unique_id.clone()).set(user);
 
         stylus_sdk::evm::log(ItemCreated {
@@ -294,5 +295,82 @@ impl Ownership {
         });
 
         Ok(())
+    }
+
+    // if (users[usernames[user]].userAddress == address(0)) {
+    // revert EriErrors.USER_DOES_NOT_EXIST(user);
+    // }
+    //
+    // IEri.Item[] memory itemList = myItems[user];
+    //
+    // // Count valid items
+    // uint256 validCount = 0;
+    // for (uint256 i = 0; i < itemList.length; i++) {
+    // if (ownedItems[user][itemList[i].itemId].owner != address(0)) {
+    // validCount++;
+    // }
+    // }
+    //
+    // if (validCount == 0) {
+    // return new IEri.Item[](0);
+    // }
+    //
+    // // Allocate and populate array
+    // IEri.Item[] memory newItemList = new IEri.Item[](validCount);
+    // for (uint256 i = 0; i < itemList.length; i++) {
+    // if (ownedItems[user][itemList[i].itemId].owner != address(0)) {
+    // newItemList[validCount - 1] = ownedItems[user][
+    // itemList[i].itemId
+    // ];
+    // validCount--;
+    // }
+    // }
+    //
+    // return newItemList;
+
+    fn get_all_my_items(
+        &self,
+    ) -> Result<Vec<(String, String, String, U256, Address, String, Vec<String>)>, EriError> {
+        self.is_authenticity_set()?;
+
+        let caller = self.vm().msg_sender();
+
+        if self
+            .users
+            .get(self.usernames.get(caller).get_string())
+            .user_address
+            .get()
+            .is_zero()
+        {
+            return Err(NotExist(USER_DOES_NOT_EXIST { user: caller }));
+        }
+
+        let item_list = self.my_items.get(caller);
+
+        let mut new_list = Vec::new();
+
+        for i in 0..item_list.len() {
+            let item_guard = self.owned_items.get(caller);
+            let owned_item = item_guard.get(item_list.get(i).unwrap().item_id.get_string());
+
+            if !owned_item.owner.get().is_zero() {
+                let mut meta = Vec::new();
+
+                for i in 0..owned_item.metadata.len() {
+                    meta.push(owned_item.metadata.get(i).unwrap().get_string())
+                }
+
+                new_list.push((
+                    owned_item.name.get_string(),
+                    owned_item.item_id.get_string(),
+                    owned_item.serial.get_string(),
+                    owned_item.date.get(),
+                    owned_item.owner.get(),
+                    owned_item.manufacturer.get_string(),
+                    meta,
+                ))
+            }
+        }
+        Ok(new_list)
     }
 }
