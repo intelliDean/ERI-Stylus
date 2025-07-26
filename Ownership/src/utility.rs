@@ -73,5 +73,6 @@ pub enum EriError {
     AlreadyClaimed(ITEM_CLAIMED_ALREADY),
     CannotGenerate(CANNOT_GENERATE_CODE_FOR_YOURSELF),
     NotClaimed(ITEM_NOT_CLAIMED_YET),
+    DoesNotExist(DOES_NOT_EXIST)
     
 }

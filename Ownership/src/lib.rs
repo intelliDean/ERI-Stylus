@@ -13,6 +13,7 @@ use alloy_primitives::{Address, FixedBytes};
 use alloy_sol_types::SolValue;
 use stylus_sdk::crypto::keccak;
 use stylus_sdk::{alloy_primitives::U256, prelude::*};
+use stylus_sdk::storage::StorageGuard;
 
 sol_storage! {
     #[entrypoint]
@@ -44,6 +45,7 @@ sol_storage! {
         uint256 registered_at;
     }
 
+    #[derive(Erase)]
     struct Item {
         string name;
         string item_id;
@@ -313,35 +315,6 @@ impl Ownership {
         Ok(new_list)
     }
 
-    // if (tempOwner == caller) {
-    // revert EriErrors.CANNOT_GENERATE_CODE_FOR_YOURSELF(caller);
-    // }
-    // // make sure only the item owner can generate code for the item
-    //
-    // if (!isRegistered(users, usernames[caller])) {
-    // revert EriErrors.NOT_REGISTERED(caller);
-    // }
-    //
-    // IEri.Item memory _item = ownedItems[caller][itemId];
-    //
-    // //this is the code the owner will give to the new owner to claim ownership
-    // bytes32 itemHash = keccak256(abi.encode(_item)); //it will always be the same every time
-    //
-    // //you cannot generate code for an item for more than 1 person at a time
-    // if (temp[itemHash] != address(0)) {
-    // revert EriErrors.ITEM_NOT_CLAIMED_YET();
-    // }
-    //
-    // // if you have already generated the code, you don't need to generate anymore (no need anymore)
-    // //        if (tempOwners[itemHash][tempOwner].owner != address(0)) {
-    // //            revert EriErrors.CODE_ALREADY_GENERATED();
-    // //        }
-    //
-    // tempOwners[itemHash][tempOwner] = _item;
-    // temp[itemHash] = tempOwner;
-    //
-    // return itemHash;
-
     fn generate_change_of_ownership_code(
         &mut self,
         item_id: String,
@@ -385,9 +358,17 @@ impl Ownership {
             return Err(NotClaimed(ITEM_NOT_CLAIMED_YET {}));
         }
 
-        //TODO: I WILL DO THIS IN THE MORNING
-        // tempOwners[itemHash][tempOwner] = _item;
-        // temp[itemHash] = tempOwner;
+        self.temp.setter(item_hash).set(temp_owner);
+
+        let mut owner_guard = self.temp_owners.setter(item_hash);
+        let mut t_owner = owner_guard.setter(temp_owner);
+
+        t_owner.item_id.set_str(item.item_id.get_string());
+        t_owner.owner.set(item.owner.get());
+        t_owner.name.set_str(item.name.get_string());
+        t_owner.date.set(item.date.get());
+        t_owner.manufacturer.set_str(item.manufacturer.get_string());
+        t_owner.serial.set_str(item.serial.get_string());
 
         stylus_sdk::evm::log(OwnershipCode {
             ownershipCode: item_hash,
@@ -396,4 +377,118 @@ impl Ownership {
 
         Ok(())
     }
+
+    fn new_owner_claim_ownership(&mut self, item_hash: FixedBytes<32>) -> Result<(), EriError> {
+        let caller = self.vm().msg_sender();
+
+        self.is_authenticity_set()?;
+        self.address_zero_check(caller)?;
+        self.is_registered(caller)?;
+
+        let temp_owner = self.temp.get(item_hash);
+
+        let mut user_item = self.temp_owners.setter(item_hash);
+        let mut item = user_item.setter(caller);
+
+        let old_owner = item.owner.get();
+
+        if caller != caller || old_owner.is_zero() {
+            return Err(Unauthorized(UNAUTHORIZED { caller }));
+        }
+
+        item.owner.set(caller); // set the new owner for the item
+
+        //remove the item from old owners's item list
+        let mut old_owner_item_list = self.my_items.setter(old_owner);
+        for i in 0..old_owner_item_list.len() {
+            let mut guard = old_owner_item_list.setter(i).unwrap();
+            if guard.item_id.get_string() == item.item_id.get_string() {
+                guard.erase();
+                break;
+            }
+        }
+
+        let item_id = item.item_id.get_string();
+
+        self.owned_items.setter(old_owner).delete(item_id.clone()); //delete the item from the old owner mapping
+
+        let mut item_guard = self.owned_items.setter(caller);
+        let mut save_item = item_guard.setter(item_id.clone());
+
+        save_item.item_id.set_str(item.item_id.get_string());
+        save_item.owner.set(item.owner.get());
+        save_item.name.set_str(item.name.get_string());
+        save_item.date.set(item.date.get());
+        save_item.manufacturer.set_str(item.manufacturer.get_string());
+        save_item.serial.set_str(item.serial.get_string());
+
+        self.owners.setter(item_id).set(caller);
+
+        let mut item_list = self.my_items.setter(caller);
+
+        let mut guard = item_list.grow();
+
+        guard.item_id.set_str(item.item_id.get_string());
+        guard.owner.set(item.owner.get());
+        guard.name.set_str(item.name.get_string());
+        guard.date.set(item.date.get());
+        guard.manufacturer.set_str(item.manufacturer.get_string());
+        guard.serial.set_str(item.serial.get_string());
+
+
+        self.temp_owners.setter(item_hash).delete(caller);
+        self.temp.delete(item_hash);
+
+
+        stylus_sdk::evm::log(OwnershipClaimed {
+            newOwner: caller,
+            oldOwner: old_owner,
+        });
+
+        Ok(())
+    }
+    fn get_temp_owner(&self, item_hash: FixedBytes<32>) -> Result<Address, EriError> {
+        self.is_authenticity_set()?;
+
+        Ok(self.temp.get(item_hash))
+    }
+
+    fn owner_revoke_code(&mut self, item_hash: FixedBytes<32>) -> Result<(), EriError> {
+        let caller = self.vm().msg_sender();
+
+        self.is_authenticity_set()?;
+        self.address_zero_check(caller)?;
+        self.is_registered(caller)?;
+
+        let temp_owner = self.temp.get(item_hash);
+
+        let mut item_guard = self.temp_owners.setter(item_hash);
+        let item = item_guard.setter(temp_owner);
+
+        if item.owner.get().is_zero() {
+            return Err(DoesNotExist(DOES_NOT_EXIST{}));
+        }
+
+        if item.owner.get() != caller {
+            return Err(OnlyOwner(ONLY_OWNER{owner: caller}));
+        }
+
+        self.temp_owners.setter(item_hash).delete(temp_owner);
+        self.temp.delete(item_hash);
+
+        stylus_sdk::evm::log(CodeRevoked {
+            itemHash: item_hash
+        });
+
+        Ok(())
+    }
+
+    // function getItem(
+    // string memory itemId
+    // ) public view isAuthenticitySet returns (IEri.Item memory) {
+    // return ownedItems._getItem(owners, itemId);
+    // }
+
+    //TODO: WILL CONTINUE FROM HERE LATER
+    // fn get_item(&self, item_id: String) ->
 }
