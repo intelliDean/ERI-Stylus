@@ -4,6 +4,7 @@ use alloy_primitives::bytes::Bytes;
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::sol;
 use stylus_sdk::prelude::*;
+use stylus_sdk::storage::{StorageGuard, StorageGuardMut};
 
 sol! {
 
@@ -13,7 +14,7 @@ sol! {
     error ADDRESS_ZERO(address zero);
     error CODE_ALREADY_GENERATED();
     error UNAUTHORIZED(address caller);
-    error ITEM_DOESNT_EXIST(string);
+    error ITEM_DOESNT_EXIST(string itemId);
     error DOES_NOT_EXIST();
     error CONTRACT_DOEST_NOT_EXIST();
     error NAME_ALREADY_EXIST(string);
@@ -73,6 +74,38 @@ pub enum EriError {
     AlreadyClaimed(ITEM_CLAIMED_ALREADY),
     CannotGenerate(CANNOT_GENERATE_CODE_FOR_YOURSELF),
     NotClaimed(ITEM_NOT_CLAIMED_YET),
-    DoesNotExist(DOES_NOT_EXIST)
-    
+    DoesNotExist(DOES_NOT_EXIST),
+    ItemDoesNotExist(ITEM_DOESNT_EXIST),
+}
+
+pub fn set_item(
+    new_item: &mut StorageGuardMut<crate::Item>,
+    user: Address,
+    name: String,
+    unique_id: String,
+    serial: String,
+    date: U256,
+    manufacturer_name: String,
+) {
+    new_item.item_id.set_str(unique_id);
+    new_item.owner.set(user);
+    new_item.name.set_str(name);
+    new_item.date.set(date);
+    new_item.manufacturer.set_str(manufacturer_name);
+    new_item.serial.set_str(serial);
+}
+
+pub fn item_tuple(
+    item: &StorageGuard<crate::Item>,
+    meta: Vec<String>,
+) -> (String, String, String, U256, Address, String, Vec<String>) {
+    (
+        item.name.get_string(),
+        item.item_id.get_string(),
+        item.serial.get_string(),
+        item.date.get(),
+        item.owner.get(),
+        item.manufacturer.get_string(),
+        meta,
+    )
 }

@@ -55,16 +55,6 @@ sol_storage! {
         string manufacturer;
         string[] metadata;
     }
-
-    //   struct Certificate {
-    //     string name;
-    //     string unique_id;
-    //     string serial;
-    //     uint256 date;
-    //     address owner;
-    //     bytes32 metadata_hash;
-    //     string[] metadata;
-    // }
 }
 
 impl Ownership {
@@ -202,7 +192,6 @@ impl Ownership {
         serial: String,
         date: U256,
         owner: Address,
-        // metadata_hash: FixedBytes<32>,
         metadata: Vec<String>,
         manufacturer_name: String,
     ) -> Result<(), EriError> {
@@ -231,23 +220,29 @@ impl Ownership {
         let mut user_item = self.owned_items.setter(user);
         let mut item = user_item.setter(unique_id.clone());
 
-        item.item_id.set_str(unique_id.clone());
-        item.owner.set(user);
-        item.name.set_str(name.clone());
-        item.date.set(date);
-        item.manufacturer.set_str(manufacturer_name.clone());
-        item.serial.set_str(serial.clone());
+        set_item(
+            &mut item,
+            user,
+            name.clone(),
+            unique_id.clone(),
+            serial.clone(),
+            date,
+            manufacturer_name.clone(),
+        );
 
         //======== PERSONAL ITEM =============
         let mut my_items_vec = self.my_items.setter(user);
         let mut new_item = my_items_vec.grow();
 
-        new_item.item_id.set_str(unique_id.clone());
-        new_item.owner.set(user);
-        new_item.name.set_str(name);
-        new_item.date.set(date);
-        new_item.manufacturer.set_str(manufacturer_name);
-        new_item.serial.set_str(serial);
+        set_item(
+            &mut new_item,
+            user,
+            name,
+            unique_id.clone(),
+            serial,
+            date,
+            manufacturer_name,
+        );
 
         for meta in metadata {
             let mut guard = item.metadata.grow();
@@ -301,15 +296,7 @@ impl Ownership {
                     meta.push(owned_item.metadata.get(i).unwrap().get_string())
                 }
 
-                new_list.push((
-                    owned_item.name.get_string(),
-                    owned_item.item_id.get_string(),
-                    owned_item.serial.get_string(),
-                    owned_item.date.get(),
-                    owned_item.owner.get(),
-                    owned_item.manufacturer.get_string(),
-                    meta,
-                ))
+                new_list.push(item_tuple(&owned_item, meta))
             }
         }
         Ok(new_list)
@@ -363,12 +350,15 @@ impl Ownership {
         let mut owner_guard = self.temp_owners.setter(item_hash);
         let mut t_owner = owner_guard.setter(temp_owner);
 
-        t_owner.item_id.set_str(item.item_id.get_string());
-        t_owner.owner.set(item.owner.get());
-        t_owner.name.set_str(item.name.get_string());
-        t_owner.date.set(item.date.get());
-        t_owner.manufacturer.set_str(item.manufacturer.get_string());
-        t_owner.serial.set_str(item.serial.get_string());
+        set_item(
+            &mut t_owner,
+            item.owner.get(),
+            item.name.get_string(),
+            item.item_id.get_string(),
+            item.serial.get_string(),
+            item.date.get(),
+            item.manufacturer.get_string(),
+        );
 
         stylus_sdk::evm::log(OwnershipCode {
             ownershipCode: item_hash,
@@ -398,7 +388,7 @@ impl Ownership {
 
         item.owner.set(caller); // set the new owner for the item
 
-        //remove the item from old owners's item list
+        //remove the item from old owner's item list
         let mut old_owner_item_list = self.my_items.setter(old_owner);
         for i in 0..old_owner_item_list.len() {
             let mut guard = old_owner_item_list.setter(i).unwrap();
@@ -415,12 +405,15 @@ impl Ownership {
         let mut item_guard = self.owned_items.setter(caller);
         let mut save_item = item_guard.setter(item_id.clone());
 
-        save_item.item_id.set_str(item.item_id.get_string());
-        save_item.owner.set(item.owner.get());
-        save_item.name.set_str(item.name.get_string());
-        save_item.date.set(item.date.get());
-        save_item.manufacturer.set_str(item.manufacturer.get_string());
-        save_item.serial.set_str(item.serial.get_string());
+        set_item(
+            &mut save_item,
+            item.owner.get(),
+            item.name.get_string(),
+            item.item_id.get_string(),
+            item.serial.get_string(),
+            item.date.get(),
+            item.manufacturer.get_string(),
+        );
 
         self.owners.setter(item_id).set(caller);
 
@@ -428,17 +421,18 @@ impl Ownership {
 
         let mut guard = item_list.grow();
 
-        guard.item_id.set_str(item.item_id.get_string());
-        guard.owner.set(item.owner.get());
-        guard.name.set_str(item.name.get_string());
-        guard.date.set(item.date.get());
-        guard.manufacturer.set_str(item.manufacturer.get_string());
-        guard.serial.set_str(item.serial.get_string());
-
+        set_item(
+            &mut guard,
+            item.owner.get(),
+            item.name.get_string(),
+            item.item_id.get_string(),
+            item.serial.get_string(),
+            item.date.get(),
+            item.manufacturer.get_string(),
+        );
 
         self.temp_owners.setter(item_hash).delete(caller);
         self.temp.delete(item_hash);
-
 
         stylus_sdk::evm::log(OwnershipClaimed {
             newOwner: caller,
@@ -466,29 +460,76 @@ impl Ownership {
         let item = item_guard.setter(temp_owner);
 
         if item.owner.get().is_zero() {
-            return Err(DoesNotExist(DOES_NOT_EXIST{}));
+            return Err(DoesNotExist(DOES_NOT_EXIST {}));
         }
 
         if item.owner.get() != caller {
-            return Err(OnlyOwner(ONLY_OWNER{owner: caller}));
+            return Err(OnlyOwner(ONLY_OWNER { owner: caller }));
         }
 
         self.temp_owners.setter(item_hash).delete(temp_owner);
         self.temp.delete(item_hash);
 
         stylus_sdk::evm::log(CodeRevoked {
-            itemHash: item_hash
+            itemHash: item_hash,
         });
 
         Ok(())
     }
 
-    // function getItem(
-    // string memory itemId
-    // ) public view isAuthenticitySet returns (IEri.Item memory) {
-    // return ownedItems._getItem(owners, itemId);
-    // }
+    fn get_item(
+        &self,
+        item_id: String,
+    ) -> Result<(String, String, String, U256, Address, String, Vec<String>), EriError> {
+        self.is_authenticity_set()?;
 
-    //TODO: WILL CONTINUE FROM HERE LATER
-    // fn get_item(&self, item_id: String) ->
+        let user = self.owners.get(item_id.clone());
+
+        if user.is_zero() {
+            return Err(ItemDoesNotExist(ITEM_DOESNT_EXIST {
+                itemId: item_id.clone(),
+            }));
+        }
+        let item_guard = self.owned_items.getter(user);
+        let item = item_guard.getter(item_id);
+
+        let mut meta = Vec::new();
+
+        for i in 0..item.metadata.len() {
+            meta.push(item.metadata.get(i).unwrap().get_string())
+        }
+
+        Ok(item_tuple(&item, meta))
+    }
+
+    fn verify_ownership(
+        &self,
+        item_id: String,
+    ) -> Result<(String, String, String, Address), EriError> {
+        self.is_authenticity_set()?;
+
+        let user = self.owners.get(item_id.clone());
+
+        if user.is_zero() {
+            return Err(ItemDoesNotExist(ITEM_DOESNT_EXIST {
+                itemId: item_id.clone(),
+            }));
+        }
+
+        let item_guard = self.owned_items.getter(user);
+        let item = item_guard.getter(item_id);
+
+        Ok((
+            item.name.get_string(),
+            item.item_id.get_string(),
+            self.usernames.getter(item.owner.get()).get_string(),
+            item.owner.get(),
+        ))
+    }
+
+    fn is_owner(&self, user: Address, item_id: String) -> Result<bool, EriError> {
+        self.is_authenticity_set()?;
+
+        Ok(self.owned_items.getter(user).getter(item_id).owner.get() == user)
+    }
 }
