@@ -3,16 +3,15 @@ name = "Authenticity"
 version = "0.1.11"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/OffchainLabs/stylus-hello-world"
-repository = "https://github.com/OffchainLabs/stylus-hello-world"
 keywords = ["arbitrum", "ethereum", "stylus", "alloy"]
-description = "Stylus hello world example"
+description = "Authenticity Contract in Stylus"
 
 [dependencies]
 alloy-primitives = "=0.8.20"
 alloy-sol-types = "=0.8.20"
 stylus-sdk = "0.9.0"
 hex = { version = "0.4", default-features = false }
+digest = "0.10.7"
 
 [dev-dependencies]
 alloy-primitives = { version = "=0.8.20", features = ["sha3-keccak"] }
@@ -43,4 +42,4 @@ panic = "abort"
 
 # If you need to reduce the binary size, it is advisable to try other
 # optimization levels, such as "s" and "z"
-opt-level = 3
+opt-level = "z"

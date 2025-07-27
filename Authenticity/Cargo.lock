@@ -8,6 +8,7 @@ version = "0.1.11"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
+ "digest 0.10.7",
  "dotenv",
  "ethers",
  "eyre",

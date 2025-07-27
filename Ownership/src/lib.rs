@@ -5,15 +5,12 @@
 extern crate alloc;
 mod utility;
 
-use crate::utility::EriError::*;
-use crate::utility::*;
+use crate::utility::{EriError::*, *};
 use alloc::string::String;
 use alloc::vec::Vec;
 use alloy_primitives::{Address, FixedBytes};
 use alloy_sol_types::SolValue;
-use stylus_sdk::crypto::keccak;
-use stylus_sdk::{alloy_primitives::U256, prelude::*};
-use stylus_sdk::storage::StorageGuard;
+use stylus_sdk::{alloy_primitives::U256, crypto::keccak, prelude::*};
 
 sol_storage! {
     #[entrypoint]
@@ -177,10 +174,10 @@ impl Ownership {
         }
 
         Ok((
-            user.user_address.get(),
-            user.username.get_string(),
-            user.registered.get(),
-            user.registered_at.get(),
+            user.user_address.get(), //user address
+            user.username.get_string(), //user name
+            user.registered.get(), //is_registered
+            user.registered_at.get(), //reg time
         ))
     }
 
