@@ -1,18 +1,19 @@
+// Only run this as a WASM if the export-abi feature is not set.
 #![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(not(any(test, feature = "export-abi")), no_std)]
 
-mod utility;
-
 #[macro_use]
 extern crate alloc;
+mod utility;
+mod verify_signature;
 
 use crate::utility::{EriError::*, *};
+use crate::verify_signature::verify;
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloy_primitives::{Address, FixedBytes};
-use alloy_sol_types::{sol, SolValue};
+use alloy_primitives::Address;
 use core::convert::Into;
-use ethers::prelude::erc::Metadata;
+use stylus_sdk::abi::Bytes;
 use stylus_sdk::{alloy_primitives::U256, crypto::keccak, evm, prelude::*};
 
 sol_interface! {
@@ -183,42 +184,21 @@ impl Authenticity {
         Ok(manufacturer)
     }
 
-    // struct Certificate {
-    //     string name;
-    //     string uniqueId;
-    //     string serial;
-    //     uint256 date;
-    //     address owner;
-    //     bytes32 metadataHash;
-    //     string[] metadata;
-    // }
-
     pub fn verify_signature(
         &self,
-        name: String,
-        unique_id: String,
-        serial: String,
-        date: U256,
-        owner: Address,
-        metadata_hash: FixedBytes<32>,
-        signature: Vec<u8>,
+        signer: Address,
+        to: Address,
+        amount: U256,
+        message: String,
+        nonce: U256,
+        signature: Bytes,
     ) -> Result<bool, EriError> {
-        let certificate = (name, unique_id, serial, date, owner, metadata_hash);
-        type Certificate = (String, String, String, U256, Address, FixedBytes<32>);
-        let encoded = Certificate::abi_encode_sequence(&certificate);
-        let item_hash: FixedBytes<32> = keccak(encoded).into();
 
+        let result = verify(signer, to, amount, message, nonce, signature)?;
 
-        let digest = self.vm().hash_typed_data_v4(struct_hash)?;
-        let signer = digest
-            .recover(signature)
-            .map_err(|_| EriError::InvalidSignature(INVALID_SIGNATURE {}))?;
-
-        let manufacturer = self.get_manufacturer_address(certificate.owner)?;
-        if signer != manufacturer {
-            return Err(EriError::InvalidSignature(INVALID_SIGNATURE {}));
-        }
-
-        Ok(true)
+        Ok(result)
     }
+
+
+
 }

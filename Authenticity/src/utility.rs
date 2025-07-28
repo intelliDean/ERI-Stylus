@@ -29,6 +29,8 @@ sol! {
     error USERNAME_MUST_BE_AT_LEAST_3_LETTERS();
     error INVALID_MANUFACTURER_NAME(string name);
     error AUTHENTICITY_NOT_SET();
+    error EC_RECOVER_CALL_ERROR();
+    error INVALID_SIGNATURE_LENGTH();
 
 
     event ManufacturerRegistered(address indexed manufacturerAddress, string indexed manufacturerName);
@@ -51,8 +53,11 @@ pub enum EriError {
     DoesNotExist(DOES_NOT_EXIST),
     ItemDoesNotExist(ITEM_DOESNT_EXIST),
     InvalidManufacturerName(INVALID_MANUFACTURER_NAME),
-    NameNotAvailable(NAME_NOT_AVAILABLE)
+    NameNotAvailable(NAME_NOT_AVAILABLE),
+    ECRecoverCallError(EC_RECOVER_CALL_ERROR),
+    InvalidSignatureLength(INVALID_SIGNATURE_LENGTH)
 }
+
 
 // #[cfg(test)]
 // mod test {
