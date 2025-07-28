@@ -167,7 +167,7 @@ impl Authenticity {
         Ok(manufacturer)
     }
 
-    pub fn verify_signature(
+    fn verify_signature(
         &self,
         name: String,
         unique_id: String,
@@ -234,26 +234,12 @@ impl Authenticity {
                     date,
                     owner,
                     metadata,
-                    manufacturer
+                    manufacturer,
                 )
                 .unwrap()),
             Err(_) => Err(ClaimFailed(CLAIM_FAILED {})),
         }
     }
-
-    // function verifyAuthenticity(IEri.Certificate memory certificate, bytes memory signature) external view returns (bool, string memory) {
-    // //first check the authenticity of the signature
-    // bool isValid = verifySignature(certificate, signature);
-    //
-    // //by design, this cannot be false because instead of false, it reverts but in case
-    // if (!isValid) {
-    // revert EriErrors.INVALID_SIGNATURE();
-    // }
-    //
-    // string memory manufacturerName = manufacturers[certificate.owner].name;
-    //
-    // return (isValid, manufacturerName);
-    // }
 
     fn verify_authenticity(
         &self,
@@ -262,8 +248,20 @@ impl Authenticity {
         serial: String,
         date: U256,
         owner: Address,
-        metadata: Vec<String>,
         metadata_hash: FixedBytes<32>,
-        signature: Bytes
-    ) -> Result<(bool, String), EriError> {}
+        signature: Bytes,
+    ) -> Result<(bool, String), EriError> {
+        match self.verify_signature(
+            name.clone(),
+            unique_id.clone(),
+            serial.clone(),
+            date,
+            owner,
+            metadata_hash,
+            signature,
+        ) {
+            Ok(is_valid) => Ok((is_valid, self.manufacturers.get(owner).name.get_string())),
+            Err(_) => Err(InvalidSignature(INVALID_SIGNATURE {})),
+        }
+    }
 }
