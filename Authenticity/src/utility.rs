@@ -30,7 +30,7 @@ sol! {
     error INVALID_MANUFACTURER_NAME(string name);
     error AUTHENTICITY_NOT_SET();
     error EC_RECOVER_CALL_ERROR();
-    error INVALID_SIGNATURE_LENGTH();
+    error CLAIM_FAILED();
 
 
     event ManufacturerRegistered(address indexed manufacturerAddress, string indexed manufacturerName);
@@ -55,7 +55,8 @@ pub enum EriError {
     InvalidManufacturerName(INVALID_MANUFACTURER_NAME),
     NameNotAvailable(NAME_NOT_AVAILABLE),
     ECRecoverCallError(EC_RECOVER_CALL_ERROR),
-    InvalidSignatureLength(INVALID_SIGNATURE_LENGTH)
+    InvalidSignature(INVALID_SIGNATURE),
+    ClaimFailed(CLAIM_FAILED)
 }
 
 

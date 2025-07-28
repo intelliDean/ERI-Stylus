@@ -11,7 +11,7 @@ use crate::utility::{EriError::*, *};
 use crate::verify_signature::verify;
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloy_primitives::Address;
+use alloy_primitives::{Address, FixedBytes};
 use core::convert::Into;
 use stylus_sdk::abi::Bytes;
 use stylus_sdk::{alloy_primitives::U256, crypto::keccak, evm, prelude::*};
@@ -40,8 +40,6 @@ sol_storage! {
         string signing_domain;
         string signature_version;
         address ownership;
-
-        // IEri OWNERSHIP; this will be the ownership contract interface to use to initialize it
 
         mapping(address => Manufacturer) manufacturers;
         mapping(string => address) names;
@@ -78,27 +76,12 @@ impl Authenticity {
 #[public]
 impl Authenticity {
     #[constructor]
-    pub fn constructor(
-        &mut self,
-        ownership_addr: Address,
-        certificate: String,
-        signing_domain: String,
-        signature_version: String,
-    ) -> Result<(), EriError> {
+    pub fn constructor(&mut self, ownership_addr: Address) -> Result<(), EriError> {
         self.ownership.set(ownership_addr);
-        self.signature_version.set_str(signature_version);
-        self.signing_domain.set_str(signing_domain);
-
-        self.certificate_type_hash
-            .set(keccak(certificate.as_bytes()));
-
-        self.eip712_domain_type_hash.set(keccak(
-            b"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)",
-        ));
 
         evm::log(ContractCreated {
             contractAddress: self.vm().contract_address(),
-            owner: self.vm().msg_sender(),
+            owner: self.vm().tx_origin(),
         });
 
         Ok(())
@@ -186,19 +169,101 @@ impl Authenticity {
 
     pub fn verify_signature(
         &self,
-        signer: Address,
-        to: Address,
-        amount: U256,
-        message: String,
-        nonce: U256,
+        name: String,
+        unique_id: String,
+        serial: String,
+        date: U256,
+        owner: Address,
+        metadata_hash: FixedBytes<32>,
         signature: Bytes,
     ) -> Result<bool, EriError> {
+        let manufacturer = self.manufacturers.get(owner).manufacturer_address.get();
 
-        let result = verify(signer, to, amount, message, nonce, signature)?;
+        if manufacturer.is_zero() || manufacturer != owner {
+            return Err(DoesNotExist(DOES_NOT_EXIST {}));
+        }
+
+        let result = verify(
+            name,
+            unique_id,
+            serial,
+            date,
+            owner,
+            metadata_hash,
+            signature,
+        )?;
 
         Ok(result)
     }
 
+    fn user_claim_ownership(
+        &mut self,
+        name: String,
+        unique_id: String,
+        serial: String,
+        date: U256,
+        owner: Address,
+        metadata: Vec<String>,
+        metadata_hash: FixedBytes<32>,
+        signature: Bytes,
+    ) -> Result<(), EriError> {
+        let ownership = IEri::new(self.ownership.get());
 
+        let caller = self.vm().msg_sender();
 
+        self.address_zero_check(caller)?;
+
+        let manufacturer = self.manufacturers.get(owner).name.get_string();
+
+        match self.verify_signature(
+            name.clone(),
+            unique_id.clone(),
+            serial.clone(),
+            date,
+            owner,
+            metadata_hash,
+            signature,
+        ) {
+            Ok(_) => Ok(ownership
+                .create_item(
+                    self,
+                    caller,
+                    name,
+                    unique_id,
+                    serial,
+                    date,
+                    owner,
+                    metadata,
+                    manufacturer
+                )
+                .unwrap()),
+            Err(_) => Err(ClaimFailed(CLAIM_FAILED {})),
+        }
+    }
+
+    // function verifyAuthenticity(IEri.Certificate memory certificate, bytes memory signature) external view returns (bool, string memory) {
+    // //first check the authenticity of the signature
+    // bool isValid = verifySignature(certificate, signature);
+    //
+    // //by design, this cannot be false because instead of false, it reverts but in case
+    // if (!isValid) {
+    // revert EriErrors.INVALID_SIGNATURE();
+    // }
+    //
+    // string memory manufacturerName = manufacturers[certificate.owner].name;
+    //
+    // return (isValid, manufacturerName);
+    // }
+
+    fn verify_authenticity(
+        &self,
+        name: String,
+        unique_id: String,
+        serial: String,
+        date: U256,
+        owner: Address,
+        metadata: Vec<String>,
+        metadata_hash: FixedBytes<32>,
+        signature: Bytes
+    ) -> Result<(bool, String), EriError> {}
 }
