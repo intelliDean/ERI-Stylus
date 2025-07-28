@@ -14,7 +14,7 @@ use alloc::vec::Vec;
 use alloy_primitives::{Address, FixedBytes};
 use core::convert::Into;
 use stylus_sdk::abi::Bytes;
-use stylus_sdk::{alloy_primitives::U256, crypto::keccak, evm, prelude::*};
+use stylus_sdk::{alloy_primitives::U256, evm, prelude::*};
 
 sol_interface! {
     interface IEri {
@@ -118,7 +118,7 @@ impl Authenticity {
 
         self.names.setter(name.clone()).set(caller);
 
-        evm::log(ManufacturerRegistered {
+        evm::log(ManufacturerRegistered { //to test, I will have to comment this out
             manufacturerAddress: caller,
             manufacturerName: name.clone().parse().unwrap(),
         });
@@ -126,7 +126,7 @@ impl Authenticity {
         Ok(())
     }
 
-    fn get_manufacturer_by_name(&self, name: String) -> Result<Address, EriError> {
+    fn get_manufacturer_address_by_name(&self, name: String) -> Result<Address, EriError> {
         let address = self.names.get(name);
 
         if address.is_zero() {
@@ -262,6 +262,32 @@ impl Authenticity {
         ) {
             Ok(is_valid) => Ok((is_valid, self.manufacturers.get(owner).name.get_string())),
             Err(_) => Err(InvalidSignature(INVALID_SIGNATURE {})),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use alloc::string::ToString;
+    use stylus_sdk::console;
+    use stylus_sdk::testing::*;
+
+    #[test]
+    fn test_manufacturer_registers() {
+        let vm = TestVM::default();
+        let mut contract = Authenticity::from(&vm);
+
+        let _result = contract.manufacturer_registers("SAMSUNG".to_string());
+
+        match contract.get_manufacturer_address_by_name(String::from("SAMSUNG")) {
+            Ok(manufacturer_address) => match contract.get_manufacturer(manufacturer_address) {
+                Ok(manu) => {
+                    assert_eq!(manu.0, String::from("SAMSUNG"));
+                }
+                _ => console!("Error!"),
+            },
+            _ => console!("Error!"),
         }
     }
 }

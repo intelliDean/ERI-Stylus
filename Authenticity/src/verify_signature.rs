@@ -130,7 +130,7 @@ fn ec_recover_call(
 
     match call::static_call(Call::new(), EC_RECOVER, &encoded_data) {
         Ok(result) => Ok(SOLAddress::abi_decode(&result, false).unwrap()),
-        Err(_) => Err(ECRecoverCallError(EC_RECOVER_CALL_ERROR {})),
+        Err(_) => Err(ECRecoverError(EC_RECOVER_CALL_ERROR {})),
     }
 }
 
